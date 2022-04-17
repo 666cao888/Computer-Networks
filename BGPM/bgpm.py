@@ -2,6 +2,7 @@
 
 import pybgpstream
 import re
+from collections import defaultdict
 
 """Code file for CS 6250 BGPM Project
 
@@ -56,6 +57,7 @@ def split_helper(path):
     return soln
                 
 
+
 def calculateUniqueAses(cache_files):
     """Retrieve the number of unique ASes from input BGP data files.
 
@@ -73,51 +75,12 @@ def calculateUniqueAses(cache_files):
         stream.set_data_interface_option("singlefile", "rib-file", cache_file)
         for rec in stream.records():
             for elem in rec: 
-                # path1 = elem.fields["as-path"]
-                # unique_ases.update(split_helper(path1))
-                result = re.search('{(.\*)}', elem.fields["as-path"])
-                if result != None:
-                    unique_ases.add(result.group(1))
-                    elem.fields["as-path"] = re.sub(result.group(0), "", elem.fields["as-path"])
-                pfx = elem.fields["as-path"].split(" ")
+                pfx = re.split("\\s+(?![^\\[]*\\])", elem.fields["as-path"])
                 if len(pfx) > 1:
-                    for i in pfx:
-                        unique_ases.add(i)
+                     for i in pfx:
+                         unique_ases.add(i)
         soln.append(len(unique_ases))  
     return soln
-
-
-
-# unique = list()
-#     for cache in cache_files:
-    
-#         stream = pybgpstream.BGPStream(data_interface="singlefile", filter = "ipv 4")
-#         stream.set_data_interface_option("singlefile", "rib-file", cache)
-#         em = set()
-#         for rec in stream.records():
-#             for elem in rec:
-
-#                 result = re.search('{(.\*)}', elem.fields["as-path"])
-#                 if result != None:
-
-#                     em.add(result.group(1))
-#                     elem.fields["as-path"] = re.sub(result.group(0), "", elem.fields["as-path"])
-#                 pfx = elem.fields["as-path"].split(" ")
-#                 if len(pfx) > 1:
-#                     for i in pfx:
-#                         em.add(i)
-#         unique.append(len(em))
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -133,37 +96,40 @@ def examinePrefixes(cache_files):
         corresponds to AS "777" as having the smallest percentage increase (of the top ten) and AS "6" having the highest increase (of the top ten).
         AS numbers should be strings.
     """
-    # soln = list()
-    # results = dict()
-    # for cache_file in cache_files:
-    #     stream = pybgpstream.BGPStream(data_interface = "singlefile", filter = "ipv 4")
-    #     stream.set_data_interface_option("singlefile", "rib-file", cache_file)
-    #     prefix_origin = defaultdict(set)
-    #     for rec in stream.records():
-    #         for elem in rec:
-    #             # Get the prefix
-    #             pfx = elem.fields["prefix"]
-    #             # Get the list of ASes in the AS path
-    #             ases = elem.fields["as-path"].split(" ")
-    #             if len(ases) > 0:
-    #                 # Get the origin ASn (rightmost)
-    #                 origin = ases[-1]
-    #                 # Insert the origin ASn in the set of
-    #                 # origins for the prefix
-    #                 prefix_origin[pfx].add(origin)
+    soln = list()
+    historybegin = dict()
+    historyend = dict()
+    solnmap = dict()
+    for cache_file in cache_files:
+        stream = pybgpstream.BGPStream(data_interface = "singlefile", filter = "ipv 4")
+        stream.set_data_interface_option("singlefile", "rib-file", cache_file)
+        prefix_origin = defaultdict(set)
+        for rec in stream.records():
+            for elem in rec:
+                ases = re.split("\\s+(?![^\\[]*\\])", elem.fields["as-path"])
+                pfx = elem.fields["prefix"]
+                if len(ases) > 0:
+                    origin = ases[-1]
+                    prefix_origin[origin].add(pfx)
+        for origin in prefix_origin:
+            if origin not in historybegin:
+                historybegin[origin] = len(prefix_origin[origin])
+            else:
+                historyend[origin] = len(prefix_origin[origin])
 
-    #     # Print the list of MOAS prefix and their origin ASns
-    #     for pfx in prefix_origin:
-    #         if results.get(pfx) == None
-    #             results[pfx] = 1
-    #         else
-    #             results[pfx] = results[pfx] + 1
+    for key in historybegin:
+        if key in historyend:
+            percentage = ((historyend[key]-historybegin[key])/historybegin[key])*100
+            solnmap[key] = percentage
+        else:
+            solnmap[key] = 0 
 
-    # {k: v for k, v in sorted(x.items(), key=lambda item: item[1])}
-    # for i in range(0,10):
-    #     soln.add(results.popitem())
-
-    # return soln
+    i = 0
+    for k,v in sorted(solnmap.items(), key=lambda x: x[1], reverse=True):
+        if i < 10:
+            soln.append(k)
+        i += 1
+    return soln
 
 
 def calculateShortestPath(cache_files):
@@ -186,8 +152,33 @@ def calculateShortestPath(cache_files):
         corresponds to the AS "455" with the shortest path lengths 4, 2 and 3 and the AS "533" with the shortest paths 4, 1 and 2.
         AS numbers should be strings.
     """
+    soln = defaultdict(list)
+    i = -1
+    for cache_file in cache_files:
+        i+=1
+        stream = pybgpstream.BGPStream(data_interface = "singlefile", filter = "ipv 4")
+        stream.set_data_interface_option("singlefile", "rib-file", cache_file)
+        prefix_origin = dict()
+        for rec in stream.records():
+            for elem in rec:
+                check = set()
+                ases = re.split("\\s+(?![^\\[]*\\])", elem.fields["as-path"])  
+                #ases = elem.fields["as-path"].split(" ")
+                for AS in ases:
+                    check.add(AS)
+                if len(check) > 1:
+                    origin = ases[-1]
+                    if origin not in prefix_origin:
+                        prefix_origin[origin] = len(check)
+                    else:
+                        prefix_origin[origin] = min(prefix_origin[origin],len(check))
+        for origin in prefix_origin:
+            if len(soln[origin]) == 0:
+                soln[origin] = [0]*9
+            soln[origin][i] = prefix_origin[origin]
+    return dict(soln)
 
-    return {}
+
 
 
 def calculateRTBHDurations(cache_files):
@@ -206,7 +197,37 @@ def calculateRTBHDurations(cache_files):
         AS numbers should be strings.
     """
 
-    return {}
+    soln = {}
+    data_holder = defaultdict(dict)
+    for cache_file in cache_files:
+        stream = pybgpstream.BGPStream(data_interface = "singlefile", filter = "ipv 4")
+        stream.set_data_interface_option("singlefile", "upd-file", cache_file)
+        for rec in stream.records():
+            for elem in rec:
+                address = elem.peer_address
+                prefix = elem.fields["prefix"]
+                s = ""
+                if elem.type == "A":
+                    communities = elem.fields['communities']
+                    for i in communities:
+                        s += " " + i
+                    if "666" in s:
+                        data_holder[address][prefix] = elem.time
+                    elif prefix in data_holder[address]:
+                        del data_holder[address][prefix]
+                if elem.type == "W" and prefix in data_holder[address]:
+                    difference = elem.time - data_holder[address][prefix]
+                    if difference > 0:
+                        temp = {}
+                        if address in soln:
+                            temp = soln.get(address)
+                        if prefix in temp:
+                            temp[prefix] = temp[prefix] + [difference]
+                        else:
+                            temp[prefix] = []
+                            temp[prefix] = temp[prefix] + [difference]
+                        soln[address] = temp
+    return soln
 
 
 def calculateAWDurations(cache_files):
@@ -222,8 +243,32 @@ def calculateAWDurations(cache_files):
         corresponds to the peerIP "127.0.0.1", the prefix "12.13.14.0/24" and event durations of 4.0, 1.0 and 3.0.
         AS numbers should be strings.
     """
+    soln = {}
+    data_holder = defaultdict(dict)
+    for cache_file in cache_files:
+        stream = pybgpstream.BGPStream(data_interface = "singlefile", filter = "ipv 4")
+        stream.set_data_interface_option("singlefile", "upd-file", cache_file)
+        for rec in stream.records():
+            for elem in rec:
+                address = elem.peer_address
+                prefix = elem.fields["prefix"]
+                if elem.type == "A":
+                    data_holder[address][prefix] = elem.time
+                if elem.type == "W" and prefix in data_holder[address]:
+                    difference = elem.time - data_holder[address][prefix]
+                    if difference > 0:
+                        temp = {}
+                        if address in soln:
+                            temp = soln.get(address)
 
-    return {}
+                        if prefix in temp:
+                            temp[prefix] = temp[prefix] + [difference]
+                        else:
+                            temp[prefix] = []
+                            temp[prefix] = temp[prefix] + [difference]
+                        soln[address] = temp
+                    del data_holder[address][prefix]
+    return soln
 
 # The main function will not be run during grading.
 # You may use it however you like during testing.
